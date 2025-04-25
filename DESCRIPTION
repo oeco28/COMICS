@@ -1,0 +1,27 @@
+Package: COMICS
+Title: Integrating Selection Scans via C.O.M.I.C.S.
+Version: 0.1.0
+Authors@R: 
+    person("Omar", "Cornejo", email = "omcornej@ucsc.edu", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0003-4076-4227"))
+Description: A Shiny application for integrated selection scan analysis. COMICS 
+    (Combined Outlier Method for Identifying Candidate Signals) provides tools
+    for performing ICS (Invariant Coordinate Selection) analysis on genomic data,
+    visualizing results, and identifying outliers across multiple selection tests.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2.9000
+Imports: 
+    shiny (>= 1.7.2),
+    ggplot2 (>= 3.4.0),
+    tidyr (>= 1.2.1),
+    bslib (>= 0.4.2),
+    mvtnorm (>= 1.1-3),
+    ICS (>= 1.3-1),
+    moments (>= 0.14.1),
+    ICSOutlier (>= 0.3-0),
+    shinyjs (>= 2.1.0)
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
