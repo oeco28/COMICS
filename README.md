@@ -4,6 +4,8 @@
 Identifying loci that are under selection versus those that are evolving neutrally is a common challenge in evolutionary genetics. Moreover, with the increase in sequence data, genomic studies have begun to incorporate the use of multiple methods to identify candidate loci under selection. Composite methods are usually implemented to transform the data into a multi-dimensional scatter where outliers are identified using a distance metric, the most common being Mahalanobis distance. However, studies have shown that the power of Mahalanobis distance reduces as the number of dimensions or selection tests increases. 
   We implement a new approach: Calling Outlier loci from Multi-dimensional data using Invariant Coordinate Selection, a pipeline for identifying outlier loci from multiple selection scans where the signal is heterogeneous and different selection algorithms capture different signatures of the selective process.
 
+![Sensitivity_Combined](https://github.com/user-attachments/assets/eb691a57-53e4-4f84-bbda-f8e5f843baed)
+
 
 # Using COMICS
 ## Installing Dependencies
