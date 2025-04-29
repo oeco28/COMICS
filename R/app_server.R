@@ -13,6 +13,8 @@
 #' @importFrom ICS ics2 ics.distances
 #'
 #' @noRd
+#' This the most finished version up to 04/2025
+
 
 server <- function(input, output, session) {
   
@@ -74,6 +76,10 @@ server <- function(input, output, session) {
     genome <- input$Chromosomes
     n <- input$Cutoff
     
+    # Get user-defined parameters for ics.outlier
+    level_test <- input$level_test
+    m_dist <- input$m_dist
+    
     # Perform ICS analysis
     Z <- ics2(X_for_ics)
     Z_dist <- ics.distances(Z, index = index.first:index.second)
@@ -86,7 +92,17 @@ server <- function(input, output, session) {
     )
     
     Z2$Log.ICS <- log10(Z2$ICS.distance)
+    
+    # Calculate cutoff for visualization (still useful for the plot)
     cutoff.applied <- quantile(Z2$Log.ICS, probs = 1 - n / 100)
+    
+    # NEW: Use the ICSOutlier package's ics.outlier function with user-selected test
+    # This replaces the previous quantile-based outlier detection
+    # Now using user-defined parameters
+    outlier_test <- input$outlier_test  # Get the selected test method
+    icsOutlierAG <- ics.outlier(Z, test = outlier_test, level.dist = 0.00001, 
+                              level.test = level_test, mDist = m_dist)
+    Z2$Outlier <- icsOutlierAG@outliers
     
     # Prepare data for visualization
     Z2$Position <- NA
@@ -101,17 +117,16 @@ server <- function(input, output, session) {
       }
     }
     
-    Z2$Outlier <- 0
-    Z2$Outlier[Z2$Log.ICS >= cutoff.applied] <- 1
-    
+    # Color coding for plot visualization
     Z2$Color <- "grey20"
     for (i in seq(1, nrow(chr.length), 2)) {
       Z2$Color[Z2$Chr == i] <- "grey58"
     }
-    Z2$Color[Z2$Log.ICS >= cutoff.applied] <- "darkred"
+    # Here we're coloring outliers detected by the ics.outlier function
+    Z2$Color[Z2$Outlier == 1] <- "darkred"
     Z2$Color <- factor(Z2$Color)
     
-    list(Z2 = Z2, cutoff.applied = cutoff.applied)
+    list(Z2 = Z2, cutoff.applied = cutoff.applied, icsOutlierAG = icsOutlierAG)
   })
   
   # Reactive value for Test of Interest data
@@ -198,12 +213,21 @@ server <- function(input, output, session) {
     Z2 <- ics_results$Z2
     cutoff.applied <- ics_results$cutoff.applied
     
-    ggplot(data = Z2, aes(x = Log.ICS)) +
-      geom_histogram(binwidth = 0.05) +
-      geom_vline(xintercept = cutoff.applied, color = "red") +
+    # Get the current test being used for display in subtitle
+    test_method <- input$outlier_test
+    test_name <- ifelse(test_method == "anscombe", "Anscombe", "Jarque-Bera")
+    
+    # Highlight points classified as outliers by ics.outlier
+    ggplot(data = Z2, aes(x = Log.ICS, fill = factor(Outlier))) +
+      geom_histogram(binwidth = 0.05, alpha = 0.7) +
+      scale_fill_manual(values = c("grey50", "darkred"), 
+                        labels = c("Normal", "Outlier"),
+                        name = "Classification") +
+      geom_vline(xintercept = cutoff.applied, color = "blue", linetype = "dashed") +
       theme_minimal() +
       labs(
         title = "ICS Distance Distribution",
+        subtitle = paste0("Red bars: outliers detected by ics.outlier (", test_name, " test)"),
         x = "Log10(ICS Distance)",
         y = "Count"
       )
@@ -218,15 +242,23 @@ server <- function(input, output, session) {
     Z2 <- ics_results$Z2
     cutoff.applied <- ics_results$cutoff.applied
     
-    chr.interest <- input$Chromosomes
-    Z2.chr <- subset(Z2, Chr == chr.interest, select = c(Log.ICS))
+    # Get the current test being used for display in subtitle
+    test_method <- input$outlier_test
+    test_name <- ifelse(test_method == "anscombe", "Anscombe", "Jarque-Bera")
     
-    ggplot(data = Z2.chr, aes(x = Log.ICS)) +
-      geom_histogram(binwidth = 0.1) +
-      geom_vline(xintercept = cutoff.applied, color = "red") +
+    chr.interest <- input$Chromosomes
+    Z2.chr <- subset(Z2, Chr == chr.interest)
+    
+    ggplot(data = Z2.chr, aes(x = Log.ICS, fill = factor(Outlier))) +
+      geom_histogram(binwidth = 0.1, alpha = 0.7) +
+      scale_fill_manual(values = c("grey50", "darkred"), 
+                        labels = c("Normal", "Outlier"),
+                        name = "Classification") +
+      geom_vline(xintercept = cutoff.applied, color = "blue", linetype = "dashed") +
       theme_minimal() +
       labs(
         title = paste("ICS Distance Distribution - Chromosome", chr.interest),
+        subtitle = paste0("Red bars: outliers detected by ics.outlier (", test_name, " test)"),
         x = "Log10(ICS Distance)",
         y = "Count"
       )
@@ -258,7 +290,8 @@ server <- function(input, output, session) {
       xlab(expression(Position(bp))) +
       guides(colour = FALSE) +
       ggtitle("ICS genome scan") +
-      geom_hline(yintercept = cutoff.applied, color = "red", linetype = "dashed")
+      # Show the quantile cutoff as a reference (blue dashed line)
+      geom_hline(yintercept = cutoff.applied, color = "blue", linetype = "dashed")
   })
   
   # Output: ICS summary
@@ -269,6 +302,16 @@ server <- function(input, output, session) {
     }
     Z2 <- ics_results$Z2
     summary(Z2$Log.ICS)
+  })
+  
+  # Output: ICSOutlier summary
+  output$summary.ICSOutlier <- renderPrint({
+    ics_results <- ics_analysis_results()
+    if (is.null(ics_results)) {
+      return(NULL)
+    }
+    icsOutlierAG <- ics_results$icsOutlierAG
+    summary(icsOutlierAG)
   })
   
   # Output: Single Test Summary
@@ -331,7 +374,7 @@ server <- function(input, output, session) {
           xlab(expression(Position(bp))) +
           guides(colour = FALSE) +
           ggtitle("ICS genome scan") +
-          geom_hline(yintercept = cutoff.applied, color = "red", linetype = "dashed")
+          geom_hline(yintercept = cutoff.applied, color = "blue", linetype = "dashed")
         
         ggsave(file, plot = p, width = 10, height = 7, dpi = 300)
       }
