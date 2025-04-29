@@ -45,6 +45,11 @@ input file 1 -> Scan_data.txt -> the main inout file that contains the test stat
 
 input file 2 -> Genome_configuration.txt -> a data table that contains the number of chromosomes and their putativley lengths.
 
+## Benchmarking
+
+We show the relative performance of the method against a popular implmentation: the use of Mahalanobis distances to identify outliers. The scripts necessary to reproduce the figure shown in the top of this readme and the necessary datafile are available in the benchmarking directory of this github.
+
+
 ### Additional Questions
 
 If there are any issues that arise, please open a new issue.
