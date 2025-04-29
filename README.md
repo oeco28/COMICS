@@ -47,7 +47,7 @@ input file 2 -> Genome_configuration.txt -> a data table that contains the numbe
 
 ## Benchmarking
 
-We show the relative performance of the method against a popular implmentation: the use of Mahalanobis distances to identify outliers. The scripts necessary to reproduce the figure shown in the top of this readme and the necessary datafile are available in the benchmarking directory of this github.
+We show the relative performance of the method against another popular method: the use of Mahalanobis distances to identify outliers. The scripts necessary to reproduce the figure shown in the top of this readme and the necessary datafile are available in the benchmarking directory of this github.
 
 
 ### Additional Questions
