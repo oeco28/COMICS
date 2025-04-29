@@ -101,9 +101,9 @@ server <- function(input, output, session) {
       }
     }
     
-    Z2$Outlier <- 0
-    Z2$Outlier[Z2$Log.ICS >= cutoff.applied] <- 1
-    
+    #Z2$Outlier <- 0
+    #Z2$Outlier[Z2$Log.ICS >= cutoff.applied] <- 1
+    Z2$Outlier <- ics.outlier(Z, test = "jarque", level.dist = 0.000005,level.test = 0.01, mDist = mean(Z_dist))@outliers
     Z2$Color <- "grey20"
     for (i in seq(1, nrow(chr.length), 2)) {
       Z2$Color[Z2$Chr == i] <- "grey58"
