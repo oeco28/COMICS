@@ -1,8 +1,20 @@
+#' Server Logic for COMICS Shiny Application
 #' UI Components for COMICS Shiny Application
 #'
+#' This file defines the server logic for the COMICS (Combined Outlier Method for
 #' This file defines the user interface for the COMICS (Combined Outlier Method for
 #' Identifying Candidate Signals) Shiny application.
 #'
+#' @param input Shiny input object
+#' @param output Shiny output object
+#' @param session Shiny session object
+#'
+#' @importFrom shiny renderPlot renderPrint downloadHandler observe
+#' @importFrom ggplot2 ggplot aes geom_point geom_histogram geom_vline scale_color_manual theme element_text theme_minimal labs ggtitle xlab ylab geom_hline guides ggsave
+#' @importFrom tidyr pivot_longer all_of
+#' @importFrom ICS ics2 ics.distances
+#' @importFrom tidyr pivot_longer all_of
+#' @importFrom ICS ics2 ics.distances
 #' @importFrom shiny fluidPage titlePanel sidebarLayout sidebarPanel mainPanel
 #' @importFrom shiny fileInput numericInput selectInput downloadButton
 #' @importFrom shiny h4 h3 verbatimTextOutput tabsetPanel tabPanel plotOutput
@@ -10,6 +22,8 @@
 #' @importFrom shinyjs useShinyjs
 #'
 #' @noRd
+#' This the most finished version up to 06/2025
+
 server <- function(input, output, session) {
   
   # Reactive data and calculations
