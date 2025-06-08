@@ -1,7 +1,7 @@
 #' COMICS Shiny Application
 #'
 #' This file loads the UI and server components for the COMICS app
-#' and runs the Shiny application.
+#' and runs the Shiny application
 #'
 
 # Load required libraries
