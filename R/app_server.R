@@ -10,56 +10,48 @@
 #' @importFrom shinyjs useShinyjs
 #'
 #' @noRd
-ui <- shiny::fluidPage(
-  shinyjs::useShinyjs(), # Enable shinyjs
+ui <- fluidPage(
+  useShinyjs(), # Enable shinyjs
   theme = bslib::bs_theme(bootswatch = "flatly"),
-  shiny::titlePanel("Integrating selection Scans via C.O.M.I.C.S."),
-  shiny::sidebarLayout(
-    shiny::sidebarPanel(
-      shiny::fileInput(inputId = "file1", label = "Data file",
+  titlePanel("Integrating selection Scans via C.O.M.I.C.S."),
+  sidebarLayout(
+    sidebarPanel(
+      fileInput(inputId = "file1", label = "Data file",
                 accept = c("text/csv", "text/tab-seperated-vlaues,text/plain", ".csv"),
                 width = NULL, buttonLabel = "Browse",
                 placeholder = "No file selected"),
-      shiny::fileInput(inputId = "configuration", label = "Genome Configuration File",
+      fileInput(inputId = "configuration", label = "Genome Configuration File",
                 accept = c("text/csv", "text/tab-seperated-values,text/plain", ".csv"),
                 width = NULL, buttonLabel = "Browse",
                 placeholder = "No file selected"),
-      tags$hr(),
-      tags$h4("ICSOutlier Parameters"),
-      shiny::numericInput("level_test", label = "Significance Level (level.test)", value = 0.01, min = 0.00001, max = 0.1, step = 0.001),
-      # Add tooltip/help text to explain the parameter
-      tags$small("Controls the significance level for the testing procedure (lower values = more strict outlier detection)"),
-      shiny::numericInput("m_dist", label = "Max Distance (mDist)", value = 1000, min = 100, max = 100000, step = 10),
-      tags$small("Maximum distance threshold for outlier detection. Higher values may detect more outliers."),
-      radioButtons("outlier_test", label = "Statistical Test", choices = c("Anscombe" = "anscombe", "Jarque-Bera" = "jarque"), selected = "anscombe"), 
-     #shiny::numericInput("Cutoff", label = "Statistical Cutoff", value = 5, min = 0, max = 10),
-      shiny::selectInput("dataset", "Choose a dataset",
+      numericInput("Cutoff", label = "Statistical Cutoff", value = 5, min = 0, max = 10),
+      selectInput("dataset", "Choose a dataset",
                   choices = c("ICS Distance")),
-      shiny::numericInput("TestOfInterest", label = "Test of interest", value = 1, min = 0, max = 100),
-      shiny::numericInput("Chromosomes", label = "Chromosome of interest", value = 1, min = 0, max = 100),
-      shiny::numericInput("First.Index", label = "First Index", value = 1, min = 1, max = 100),
-      shiny::numericInput("Second.Index", label = "Second Index", value = 1, min = 1, max = 100),
-      shiny::downloadButton("downloadData", "Download ICS output"),
-      shiny::downloadButton("downloadPlot", "Download ICS figure")
+      numericInput("TestOfInterest", label = "Test of interest", value = 1, min = 0, max = 100),
+      numericInput("Chromosomes", label = "Chromosome of interest", value = 1, min = 0, max = 100),
+      numericInput("First.Index", label = "First Index", value = 1, min = 1, max = 100),
+      numericInput("Second.Index", label = "Second Index", value = 1, min = 1, max = 100),
+      downloadButton("downloadData", "Download ICS output"),
+      downloadButton("downloadPlot", "Download ICS figure")
     ),
     
-    shiny::mainPanel(
-      shiny::tabsetPanel(
-        id = "plotTabs",
-        shiny::tabPanel("Summary",
-                 shiny::h4("Summary.ICS"),
-                 shiny::verbatimTextOutput("summary.ICS"),
-                 shiny::h3("Summary.SingleTest"),
-                 shiny::verbatimTextOutput("summary.SingleTest"),
-                 shiny::verbatimTextOutput("nText")
-        ),
-        shiny::tabPanel("ICS Plots",
-                 shiny::plotOutput("ICS.hist"),
-                 shiny::plotOutput("ICS.chromosome.hist")),
-        shiny::tabPanel("Genome Scan", shiny::plotOutput("GenomeScan")),
-        shiny::tabPanel("Test Scans",
-                 shiny::plotOutput("GenomeTest"),
-                 shiny::plotOutput("GenomeMelt"))
+    mainPanel(
+      tabsetPanel( # Added tabsetPanel
+        id = "plotTabs", #id for tabset
+        tabPanel("Summary",
+                 h4("Summary.ICS"),
+                 verbatimTextOutput("summary.ICS"),
+                 h3("Summary.SingleTest"),
+                 verbatimTextOutput("summary.SingleTest"),
+                 verbatimTextOutput("nText")
+                 ),
+        tabPanel("ICS Plots",
+                 plotOutput("ICS.hist"),
+                 plotOutput("ICS.chromosome.hist")),
+        tabPanel("Genome Scan", plotOutput("GenomeScan")),
+        tabPanel("Test Scans",
+                 plotOutput("GenomeTest"),
+                 plotOutput("GenomeMelt"))
       )
     )
   )
