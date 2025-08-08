@@ -12,9 +12,9 @@
 #' @importFrom shiny renderPlot renderPrint downloadHandler observe
 #' @importFrom ggplot2 ggplot aes geom_point geom_histogram geom_vline scale_color_manual theme element_text theme_minimal labs ggtitle xlab ylab geom_hline guides ggsave
 #' @importFrom tidyr pivot_longer all_of
-#' @importFrom ICS ics2 ics.distances ics
+#' @importFrom ICS ics2 ics.distances
 #' @importFrom tidyr pivot_longer all_of
-#' @importFrom ICS ics2 ics.distances ics
+#' @importFrom ICS ics2 ics.distances
 #' @importFrom shiny fluidPage titlePanel sidebarLayout sidebarPanel mainPanel
 #' @importFrom shiny fileInput numericInput selectInput downloadButton
 #' @importFrom shiny h4 h3 verbatimTextOutput tabsetPanel tabPanel plotOutput
@@ -22,51 +22,9 @@
 #' @importFrom shinyjs useShinyjs
 #'
 #' @noRd
-#' This the most finished version up to 06/2025 - Modified with SD-based ICS
+#' This the most finished version up to 06/2025
 
 server <- function(input, output, session) {
-  
-  # Helper function to safely extract ICS scores
-  extract_ics_scores <- function(ics_obj) {
-    # Try different methods to extract scores from ICS object
-    possible_slots <- c("scores", "Scores", "components", "Components", "X", "data")
-    for (slot_name in possible_slots) {
-      tryCatch({
-        result <- slot(ics_obj, slot_name)
-        if (is.matrix(result) || is.data.frame(result)) {
-          return(as.matrix(result))
-        }
-      }, error = function(e) {
-        # Continue to next slot
-      })
-    }
-    
-    # Try matrix multiplication approach
-    tryCatch({
-      if (hasSlot(ics_obj, "W") && hasSlot(ics_obj, "X")) {
-        W_matrix <- slot(ics_obj, "W")
-        X_data <- slot(ics_obj, "X")
-        result <- as.matrix(X_data) %*% as.matrix(W_matrix)
-        return(result)
-      }
-    }, error = function(e) {
-      # Continue
-    })
-    
-    # Try coef() method
-    tryCatch({
-      result <- coef(ics_obj)
-      if (is.matrix(result) || is.data.frame(result)) {
-        return(as.matrix(result))
-      }
-    }, error = function(e) {
-      # Continue
-    })
-    
-    stop("Could not extract scores from ICS object")
-  }
-  
-
   
   # Reactive data and calculations
   data_objects <- reactive({
@@ -79,7 +37,7 @@ server <- function(input, output, session) {
         dataX = NULL,
         chr.length = NULL,
         X_for_ics = NULL,
-        X_standardized = NULL
+        Z2 = NULL
       ))
     }
     
@@ -91,14 +49,11 @@ server <- function(input, output, session) {
     X_for_ics <- dataX
     X_for_ics[, 1:2] <- NULL # Remove the first two columns
     
-    # Standardize the data (center and scale)
-    X_standardized <- as.data.frame(scale(X_for_ics, center = TRUE, scale = TRUE))
-    
     list(
       dataX = dataX,
       chr.length = chr.length,
       X_for_ics = X_for_ics,
-      X_standardized = X_standardized
+      Z2 = NULL # Initialize Z2 here, will be calculated later if needed
     )
   })
   
@@ -107,130 +62,68 @@ server <- function(input, output, session) {
     data_objs <- data_objects()
     chr.length <- data_objs$chr.length
     if(!is.null(chr.length)){
+      # Make sure this condition doesn't evaluate a vector
+      # This should be a single TRUE/FALSE value
       updateNumericInput(session, "Chromosomes",
                          max = nrow(chr.length),
                          value = min(input$Chromosomes, nrow(chr.length)))
     }
   })
   
-  # Reactive value for ICS analysis with multiple scatter combinations
+  # Reactive value for ICS analysis.  This is now a reactive *value*, not an observe
   ics_analysis_results <- reactive({
     data_objs <- data_objects()
     dataX <- data_objs$dataX
     chr.length <- data_objs$chr.length
-    X_standardized <- data_objs$X_standardized
+    X_for_ics <- data_objs$X_for_ics
     
-    if (is.null(dataX) || is.null(chr.length) || is.null(X_standardized)) {
+    if (is.null(dataX) || is.null(chr.length) || is.null(X_for_ics)) {
       return(NULL)
     }
     
+    index.first <- input$First.Index
+    index.second <- input$Second.Index
     genome <- input$Chromosomes
-    scatter_method <- input$scatter_method
+    n <- input$Cutoff
     
-    # Perform ICS analysis with selected scatter matrices
-    tryCatch({
-      if (scatter_method == "cov_cov4") {
-        Z <- ics(X_standardized, S1 = cov, S2 = cov4)
-      } else if (scatter_method == "cov_cov3") {
-        Z <- ics(X_standardized, S1 = cov, S2 = function(x) cov(x^3))
-      } else if (scatter_method == "cov_cor") {
-        Z <- ics(X_standardized, S1 = cov, S2 = cor)
-      } else if (scatter_method == "cor_cov4") {
-        Z <- ics(X_standardized, S1 = cor, S2 = cov4)
-      } else {
-        # Default to cov_cov4
-        Z <- ics(X_standardized, S1 = cov, S2 = cov4)
+    # Perform ICS analysis
+    Z <- ics2(X_for_ics)
+    Z_dist <- ics.distances(Z, index = index.first:index.second)
+    Z_frame <- data.frame(Z_dist)
+    
+    Z2 <- data.frame(
+      Chr = dataX$Chrom,
+      Midpoint = dataX$Midpoint,
+      ICS.distance = Z_frame$Z_dist
+    )
+    
+    Z2$Log.ICS <- log10(Z2$ICS.distance)
+    cutoff.applied <- quantile(Z2$Log.ICS, probs = 1 - n / 100)
+    
+    # Prepare data for visualization
+    Z2$Position <- NA
+    if (any(Z2$Chr == 1)) {
+      Z2$Position[Z2$Chr == 1] <- Z2$Midpoint[Z2$Chr == 1]
+    }
+    
+    for (j in 2:genome) {
+      if (any(Z2$Chr == j)) {
+        prev_chr_length <- sum(chr.length$V2[1:(j - 1)])
+        Z2$Position[Z2$Chr == j] <- Z2$Midpoint[Z2$Chr == j] + prev_chr_length
       }
-      
-      # Extract scores using the safe function
-      scores <- extract_ics_scores(Z)
-      
-      # Calculate distances using the selected method
-      if (input$distance_method == "euclidean") {
-        distances <- sqrt(rowSums(scores^2))
-      } else if (input$distance_method == "component_wise") {
-        # Use the most variable component
-        component_vars <- apply(scores, 2, var)
-        best_component <- which.max(component_vars)
-        distances <- abs(scores[, best_component])
-      } else if (input$distance_method == "multi_component") {
-        # Use top 2 components
-        component_vars <- apply(scores, 2, var)
-        n_components <- min(2, ncol(scores))
-        top_components <- order(component_vars, decreasing = TRUE)[1:n_components]
-        selected_components <- scores[, top_components, drop = FALSE]
-        
-        # Use Euclidean distance in selected component space
-        component_center <- colMeans(selected_components)
-        distances <- sqrt(rowSums((selected_components - matrix(component_center,
-                                                               nrow = nrow(selected_components),
-                                                               ncol = length(component_center),
-                                                               byrow = TRUE))^2))
-      } else {
-        # Default to euclidean
-        distances <- sqrt(rowSums(scores^2))
-      }
-      
-      # Apply standard deviation-based threshold
-      mean_dist <- mean(distances)
-      sd_dist <- sd(distances)
-      sd_multiplier <- input$sd_multiplier
-      cutoff_value <- mean_dist + sd_multiplier * sd_dist
-      
-      # Create results dataframe
-      Z2 <- data.frame(
-        Chr = dataX$Chrom,
-        Midpoint = dataX$Midpoint,
-        ICS.distance = distances
-      )
-      
-      Z2$Log.ICS <- log10(Z2$ICS.distance + 1e-10)  # Add small constant to avoid log(0)
-      
-      # Prepare data for visualization
-      Z2$Position <- NA
-      if (any(Z2$Chr == 1)) {
-        Z2$Position[Z2$Chr == 1] <- Z2$Midpoint[Z2$Chr == 1]
-      }
-      
-      for (j in 2:genome) {
-        if (any(Z2$Chr == j)) {
-          prev_chr_length <- sum(chr.length$V2[1:(j - 1)])
-          Z2$Position[Z2$Chr == j] <- Z2$Midpoint[Z2$Chr == j] + prev_chr_length
-        }
-      }
-      
-      # Apply standard deviation-based cutoff
-      Z2$Outlier <- as.numeric(Z2$ICS.distance > cutoff_value)
-      
-      Z2$Color <- "grey20"
-      for (i in seq(1, nrow(chr.length), 2)) {
-        Z2$Color[Z2$Chr == i] <- "grey58"
-      }
-      Z2$Color[Z2$Outlier == 1] <- "darkred"
-      Z2$Color <- factor(Z2$Color)
-      
-      # Calculate additional statistics
-      n_outliers <- sum(Z2$Outlier)
-      outlier_percentage <- round(n_outliers / nrow(Z2) * 100, 2)
-      
-      list(
-        Z2 = Z2,
-        cutoff_applied = cutoff_value,
-        log_cutoff = log10(cutoff_value + 1e-10),
-        scores = scores,
-        distances = distances,
-        mean_dist = mean_dist,
-        sd_dist = sd_dist,
-        n_outliers = n_outliers,
-        outlier_percentage = outlier_percentage,
-        scatter_method = scatter_method,
-        distance_method = input$distance_method,
-        sd_multiplier = sd_multiplier
-      )
-      
-    }, error = function(e) {
-      return(list(error = paste("ICS analysis failed:", e$message)))
-    })
+    }
+    
+    Z2$Outlier <- 0
+    Z2$Outlier[Z2$Log.ICS >= cutoff.applied] <- 1
+    
+    Z2$Color <- "grey20"
+    for (i in seq(1, nrow(chr.length), 2)) { # Changed dataY to chr.length
+      Z2$Color[Z2$Chr == i] <- "grey58"
+    }
+    Z2$Color[Z2$Log.ICS >= cutoff.applied] <- "darkred"
+    Z2$Color <- factor(Z2$Color)
+    
+    list(Z2 = Z2, cutoff.applied = cutoff.applied) # Return a list
   })
   
   # Reactive value for Test of Interest data
@@ -243,6 +136,7 @@ server <- function(input, output, session) {
     TestX <- input$TestOfInterest
     TestXF <- dataX[, 2 + TestX]
     
+    # The issue is likely here - use proper tidyverse syntax
     data.1.name <- colnames(dataX)[3:ncol(dataX)]
     data.1.melt <- pivot_longer(dataX, cols = all_of(data.1.name),
                                 names_to = "variable", values_to = "value")
@@ -309,57 +203,42 @@ server <- function(input, output, session) {
   # Output: ICS histogram
   output$ICS.hist <- renderPlot({
     ics_results <- ics_analysis_results()
-    if (is.null(ics_results) || !is.null(ics_results$error)) {
+    if (is.null(ics_results)) {
       return(NULL)
     }
+    Z2 <- ics_results$Z2
+    cutoff.applied <- ics_results$cutoff.applied
     
-    distances <- ics_results$distances
-    cutoff_applied <- ics_results$cutoff_applied
-    mean_dist <- ics_results$mean_dist
-    sd_dist <- ics_results$sd_dist
-    
-    hist_data <- data.frame(distances = distances)
-    
-    ggplot(data = hist_data, aes(x = distances)) +
-      geom_histogram(binwidth = (max(distances) - min(distances))/30,
-                     fill = "lightblue", alpha = 0.7) +
-      geom_vline(xintercept = cutoff_applied, color = "red", linewidth = 1.2) +
-      geom_vline(xintercept = mean_dist, color = "blue", linetype = "dashed") +
-      geom_vline(xintercept = mean_dist + sd_dist, color = "green", linetype = "dotted") +
+    ggplot(data = Z2, aes(x = Log.ICS)) +
+      geom_histogram(binwidth = 0.05) +
+      geom_vline(xintercept = cutoff.applied, color = "red") +
       theme_minimal() +
       labs(
-        title = paste("ICS Distance Distribution (SD-based method)"),
-        subtitle = paste("Method:", ics_results$scatter_method, "|",
-                        ics_results$distance_method, "| Multiplier:", ics_results$sd_multiplier),
-        x = "ICS Distance",
+        title = "ICS Distance Distribution",
+        x = "Log10(ICS Distance)",
         y = "Count"
-      ) +
-      annotate("text", x = cutoff_applied, y = Inf,
-               label = paste("Cutoff =", round(cutoff_applied, 3)),
-               vjust = 2, color = "red")
+      )
   })
   
   # Output: Chromosome-specific ICS histogram
   output$ICS.chromosome.hist <- renderPlot({
     ics_results <- ics_analysis_results()
-    if (is.null(ics_results) || !is.null(ics_results$error)) {
+    if (is.null(ics_results)) {
       return(NULL)
     }
-    
     Z2 <- ics_results$Z2
-    cutoff_applied <- ics_results$cutoff_applied
+    cutoff.applied <- ics_results$cutoff.applied
+    
     chr.interest <- input$Chromosomes
+    Z2.chr <- subset(Z2, Chr == chr.interest, select = c(Log.ICS))
     
-    Z2.chr <- subset(Z2, Chr == chr.interest, select = c(ICS.distance))
-    
-    ggplot(data = Z2.chr, aes(x = ICS.distance)) +
-      geom_histogram(binwidth = (max(Z2.chr$ICS.distance) - min(Z2.chr$ICS.distance))/20,
-                     fill = "lightgreen", alpha = 0.7) +
-      geom_vline(xintercept = cutoff_applied, color = "red", linewidth = 1.2) +
+    ggplot(data = Z2.chr, aes(x = Log.ICS)) +
+      geom_histogram(binwidth = 0.1) +
+      geom_vline(xintercept = cutoff.applied, color = "red") +
       theme_minimal() +
       labs(
         title = paste("ICS Distance Distribution - Chromosome", chr.interest),
-        x = "ICS Distance",
+        x = "Log10(ICS Distance)",
         y = "Count"
       )
   })
@@ -367,12 +246,11 @@ server <- function(input, output, session) {
   # Output: Genome scan plot
   output$GenomeScan <- renderPlot({
     ics_results <- ics_analysis_results()
-    if (is.null(ics_results) || !is.null(ics_results$error)) {
+    if (is.null(ics_results)) {
       return(NULL)
     }
-    
     Z2 <- ics_results$Z2
-    log_cutoff <- ics_results$log_cutoff
+    cutoff.applied <- ics_results$cutoff.applied
     
     ggplot(data = Z2, aes(x = Position, y = Log.ICS, color = Color)) +
       geom_point(size = 1.0) +
@@ -390,36 +268,18 @@ server <- function(input, output, session) {
       ylab(expression(Log[10] ~ ICS ~ Distance)) +
       xlab(expression(Position(bp))) +
       guides(colour = FALSE) +
-      ggtitle(paste("ICS Genome Scan (SD-based:", ics_results$sd_multiplier, "σ)")) +
-      geom_hline(yintercept = log_cutoff, color = "red", linetype = "dashed")
+      ggtitle("ICS genome scan") +
+      geom_hline(yintercept = cutoff.applied, color = "red", linetype = "dashed")
   })
   
   # Output: ICS summary
   output$summary.ICS <- renderPrint({
     ics_results <- ics_analysis_results()
-    if (is.null(ics_results) || !is.null(ics_results$error)) {
-      if (!is.null(ics_results$error)) {
-        cat("Error in ICS analysis:", ics_results$error)
-      }
+    if (is.null(ics_results)) {
       return(NULL)
     }
-    
-    cat("=== ICS Analysis Summary (Standard Deviation Method) ===\n")
-    cat("Scatter matrices:", ics_results$scatter_method, "\n")
-    cat("Distance method:", ics_results$distance_method, "\n")
-    cat("SD multiplier:", ics_results$sd_multiplier, "\n\n")
-    
-    cat("Distance statistics:\n")
-    cat("Mean:", round(ics_results$mean_dist, 4), "\n")
-    cat("SD:", round(ics_results$sd_dist, 4), "\n")
-    cat("Cutoff (μ + ", ics_results$sd_multiplier, "σ):", round(ics_results$cutoff_applied, 4), "\n\n")
-    
-    cat("Outlier detection:\n")
-    cat("Number of outliers:", ics_results$n_outliers, "\n")
-    cat("Percentage of outliers:", ics_results$outlier_percentage, "%\n\n")
-    
-    cat("Distance distribution:\n")
-    print(summary(ics_results$distances))
+    Z2 <- ics_results$Z2
+    summary(Z2$Log.ICS)
   })
   
   # Output: Single Test Summary
@@ -432,65 +292,38 @@ server <- function(input, output, session) {
     summary(dataX[, -1:-2])
   })
   
-  # Output: Component analysis
-  output$component.analysis <- renderPrint({
-    ics_results <- ics_analysis_results()
-    if (is.null(ics_results) || !is.null(ics_results$error)) {
-      return(NULL)
-    }
-    
-    scores <- ics_results$scores
-    if (is.null(scores)) return(NULL)
-    
-    component_vars <- apply(scores, 2, var)
-    component_ranking <- order(component_vars, decreasing = TRUE)
-    
-    cat("=== ICS Component Analysis ===\n")
-    cat("Component importance ranking:\n")
-    for (i in 1:length(component_ranking)) {
-      cat("Rank", i, ": Component", component_ranking[i],
-          "- Variance:", round(component_vars[component_ranking[i]], 4), "\n")
-    }
-  })
-  
-  #output nText
+  #output ntext
   output$nText <- renderText({
     ics_results <- ics_analysis_results()
-    if (is.null(ics_results) || !is.null(ics_results$error)) {
-      return("No results available")
+    if (is.null(ics_results)) {
+      return(NULL)
     }
-    paste("Number of Outliers:", ics_results$n_outliers,
-          "(", ics_results$outlier_percentage, "%)")
+    Z2 <- ics_results$Z2
+    paste("Number of Outliers:", sum(Z2$Outlier))
   })
   
   # Download handlers
   output$downloadData <- downloadHandler(
     filename = function() {
-      paste("ICS_SD_results_", Sys.Date(), ".csv", sep = "")
+      paste("ICS_results_", Sys.Date(), ".csv", sep = "")
     },
     content = function(file) {
       ics_results <- ics_analysis_results()
-      if (!is.null(ics_results) && is.null(ics_results$error)) {
-        # Add analysis parameters to the output
-        output_data <- ics_results$Z2
-        output_data$scatter_method <- ics_results$scatter_method
-        output_data$distance_method <- ics_results$distance_method
-        output_data$sd_multiplier <- ics_results$sd_multiplier
-        output_data$cutoff_value <- ics_results$cutoff_applied
-        write.csv(output_data, file, row.names = FALSE)
+      if (!is.null(ics_results)) {
+        write.csv(ics_results$Z2, file, row.names = FALSE)
       }
     }
   )
   
   output$downloadPlot <- downloadHandler(
     filename = function() {
-      paste("ICS_SD_plot_", Sys.Date(), ".png", sep = "")
+      paste("ICS_plot_", Sys.Date(), ".png", sep = "")
     },
     content = function(file) {
       ics_results <- ics_analysis_results()
-      if (!is.null(ics_results) && is.null(ics_results$error)) {
+      if (!is.null(ics_results)) {
         Z2 <- ics_results$Z2
-        log_cutoff <- ics_results$log_cutoff
+        cutoff.applied <- ics_results$cutoff.applied
         
         p <- ggplot(data = Z2, aes(x = Position, y = Log.ICS, color = Color)) +
           geom_point(size = 1.0) +
@@ -508,10 +341,10 @@ server <- function(input, output, session) {
           ylab(expression(Log[10] ~ ICS ~ Distance)) +
           xlab(expression(Position(bp))) +
           guides(colour = FALSE) +
-          ggtitle(paste("ICS Genome Scan (SD-based:", ics_results$sd_multiplier, "σ)")) +
-          geom_hline(yintercept = log_cutoff, color = "red", linetype = "dashed")
+          ggtitle("ICS genome scan") +
+          geom_hline(yintercept = cutoff.applied, color = "red", linetype = "dashed")
         
-        ggsave(file, plot = p, width = 12, height = 8, dpi = 300)
+        ggsave(file, plot = p, width = 10, height = 7, dpi = 300)
       }
     }
   )
